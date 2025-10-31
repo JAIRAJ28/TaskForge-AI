@@ -165,7 +165,7 @@ const updateTask = async (req, res) => {
     if (!(await ensureMember(current.projectId, req.user.userId))) {
       return res.status(403).json({ error: true, message: "Forbidden: not a project member." });
     }
-    let { title, description, difficulty, order } = req.body;
+    let { title, description, difficulty, order, columnId } = req.body;
     if (title !== undefined) {
       if (typeof title !== "string" || title.trim().length < 3) {
         return res.status(400).json({ error: true, message: "title must be a string ≥ 3 chars." });
@@ -180,7 +180,10 @@ const updateTask = async (req, res) => {
     }
     if (difficulty !== undefined) {
       if (typeof difficulty !== "string" || !DIFFICULTIES.has(difficulty)) {
-        return res.status(400).json({ error: true, message: "difficulty must be one of: easy | medium | hard." });
+        return res.status(400).json({
+          error: true,
+          message: "difficulty must be one of: easy | medium | hard.",
+        });
       }
     }
     if (order !== undefined) {
@@ -188,30 +191,56 @@ const updateTask = async (req, res) => {
         return res.status(400).json({ error: true, message: "order must be a non-negative number." });
       }
     }
+    if (columnId !== undefined) {
+      if (!mongoose.Types.ObjectId.isValid(columnId)) {
+        return res.status(400).json({ error: true, message: "Invalid columnId." });
+      }
+      const targetColumn = await Column.findOne({
+        _id: columnId,
+        projectId: current.projectId,
+      }).lean();
+      if (!targetColumn) {
+        return res.status(400).json({
+          error: true,
+          message: "columnId does not belong to this project.",
+        });
+      }
+    }
     const setDoc = {};
     if (title !== undefined) setDoc.title = title;
     if (description !== undefined) setDoc.description = description;
     if (difficulty !== undefined) setDoc.difficulty = difficulty;
     if (order !== undefined) setDoc.order = order;
+    if (columnId !== undefined) setDoc.columnId = columnId;
     if (Object.keys(setDoc).length === 0) {
       return res.status(400).json({ error: true, message: "No valid fields to update." });
     }
-    const updated = await Task.findByIdAndUpdate(
-      taskId,
-      { $set: setDoc },
-      { new: true }
-    );
-    getIO().to(`project:${current.projectId}`).emit("task:updated", { task: updated });
-    if (order !== undefined) {
-      getIO().to(`project:${current.projectId}`).emit("task:reordered", {
+    const updated = await Task.findByIdAndUpdate(taskId, { $set: setDoc }, { new: true });
+    const io = getIO();
+    io.to(`project:${current.projectId}`).emit("task:updated", { task: updated })
+    if (columnId !== undefined && String(columnId) !== String(current.columnId)) {
+      io.to(`project:${current.projectId}`).emit("task:moved", {
+        taskId: updated._id,
+        fromColumnId: current.columnId,
+        toColumnId: updated.columnId,
+        order: updated.order,
+      });
+    } else if (order !== undefined) {
+      io.to(`project:${current.projectId}`).emit("task:reordered", {
         taskId: updated._id,
         columnId: updated.columnId,
         order: updated.order,
       });
     }
-    return res.status(200).json({ error: false, message: "Task updated.", task: updated });
+    return res.status(200).json({
+      error: false,
+      message: "Task updated successfully.",
+      task: updated,
+    });
   } catch (err) {
-    return res.status(500).json({ error: true, message: `Unable to update task: ${err.message}` });
+    return res
+      .status(500)
+      .json({ error: true, message: `Unable to update task: ${err.message}` });
   }
 };
 
