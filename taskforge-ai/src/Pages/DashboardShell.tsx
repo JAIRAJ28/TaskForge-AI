@@ -66,7 +66,7 @@ const DashboardShell: React.FC = () => {
       <button
         onClick={openSidebar}
         aria-label="Open menu"
-        className={`fixed left-0 top-1/2 z-30 -translate-y-1/2 rounded-r-xl border border-l-0 border-white/10 bg-white/5 p-2 text-white/90 shadow transition-opacity md:hidden ${
+        className={`fixed left-0 top-1/2 z-10000 -translate-y-1/2 rounded-r-xl border border-l-0 border-white/10 bg-white/5 p-2 text-white/90 shadow transition-opacity md:hidden ${
           isSidebarOpen ? "pointer-events-none opacity-0" : "opacity-100"
         }`}
       >
