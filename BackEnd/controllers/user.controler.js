@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 
 const register = async (req, res) => {
+  console.log(req?.body)
   try {
     const { name, password } = req.body || {};
     if (!name || String(name).trim().length < 3) {
@@ -12,21 +13,17 @@ const register = async (req, res) => {
     if (!password || String(password).length < 3) {
       return res.status(400).json({ error: true, message: 'Password must be ≥ 3 chars' });
     }
-
     const exists = await SignupModel.findOne({ name: String(name).trim() }).lean();
     if (exists) {
       return res.status(409).json({ error: true, message: 'Name already taken' });
     }
-
     const hash = await bcrypt.hash(password, 5);
     const user = await SignupModel.create({ name: String(name).trim(), password: hash });
-
     const token = jwt.sign(
       { userId: user._id.toString(), name: user.name },
       process.env.SECRET_KEY,
       { expiresIn: '7d' }
     );
-
     return res.status(201).json({
       error: false,
       message: 'Registered',

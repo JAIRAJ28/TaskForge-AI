@@ -6,14 +6,14 @@ const { getIO } = require("../socketjs/ioUniv");
 const { ensureMember } = require("../helpers/membership");
 
 const DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+
 const createTask = async (req, res) => {
   try {
-    let { projectId, columnId, title, description, difficulty,user } = req.body;
+    let { projectId, columnId, title, description, difficulty } = req.body;
+    const user = req.user
+    console.log( projectId, columnId, title, description, difficulty,user," projectId, columnId, title, description, difficulty,user")
     if (!projectId || !mongoose.Types.ObjectId.isValid(projectId)) {
       return res.status(400).json({ error: true, message: 'Invalid projectId.' });
-    }
-    if (!user.userId || !mongoose.Types.ObjectId.isValid(user.userId)) {
-      return res.status(400).json({ error: true, message: 'Invalid userId.' });
     }
     if (!await ensureMember(projectId, user.userId)) {
         return res.status(403).json({ error: true, message: "Forbidden: not a project member." });
@@ -158,14 +158,14 @@ const updateTask = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(taskId)) {
       return res.status(400).json({ error: true, message: "Invalid taskId." });
     }
-    const current = await Task.findById(taskId).select("projectId columnId").lean();
+    const current = await Task.findById(taskId).select("projectId columnId order").lean();
     if (!current) {
       return res.status(404).json({ error: true, message: "Task not found." });
     }
-    if (!await ensureMember(current.projectId, req.user.userId)) {
+    if (!(await ensureMember(current.projectId, req.user.userId))) {
       return res.status(403).json({ error: true, message: "Forbidden: not a project member." });
     }
-    let { title, description, difficulty, columnId, order } = req.body;
+    let { title, description, difficulty, order } = req.body;
     if (title !== undefined) {
       if (typeof title !== "string" || title.trim().length < 3) {
         return res.status(400).json({ error: true, message: "title must be a string ≥ 3 chars." });
@@ -183,79 +183,33 @@ const updateTask = async (req, res) => {
         return res.status(400).json({ error: true, message: "difficulty must be one of: easy | medium | hard." });
       }
     }
-    if (columnId !== undefined && !mongoose.Types.ObjectId.isValid(columnId)) {
-      return res.status(400).json({ error: true, message: "Invalid columnId." });
-    }
     if (order !== undefined) {
       if (typeof order !== "number" || order < 0) {
         return res.status(400).json({ error: true, message: "order must be a non-negative number." });
       }
     }
-    let targetColumnId = columnId ?? current.columnId;
-    if (String(targetColumnId) !== String(current.columnId)) {
-      const col = await Column.findById(targetColumnId).select("projectId").lean();
-      if (!col) {
-        return res.status(404).json({ error: true, message: "Target column not found." });
-      }
-      if (String(col.projectId) !== String(current.projectId)) {
-        return res.status(400).json({ error: true, message: "Target column belongs to a different project." });
-      }
-    }
-    const AppendOrder = async () => {
-      const last = await Task.find({
-        projectId: current.projectId,
-        columnId: targetColumnId,
-      })
-        .sort({ order: -1 })
-        .select({ order: 1 })
-        .limit(1)
-        .lean();
-      return last.length ? Number(last[0].order) + 1000 : 1000;
-    };
-
-    const shouldAppend = order === undefined && String(targetColumnId) !== String(current.columnId);
-    const finalOrder = order !== undefined ? order : (shouldAppend ? await AppendOrder() : undefined);
-
     const setDoc = {};
     if (title !== undefined) setDoc.title = title;
     if (description !== undefined) setDoc.description = description;
     if (difficulty !== undefined) setDoc.difficulty = difficulty;
-    if (targetColumnId !== undefined) setDoc.columnId = targetColumnId;
-    if (finalOrder !== undefined) setDoc.order = finalOrder;
-
+    if (order !== undefined) setDoc.order = order;
     if (Object.keys(setDoc).length === 0) {
       return res.status(400).json({ error: true, message: "No valid fields to update." });
     }
-
-    try {
-      const updated = await Task.findOneAndUpdate(
-        { _id: taskId },
-        { $set: setDoc },
-        { new: true }
-      );
-
-      getIO().to(`project:${current.projectId}`).emit("task:updated", { task: updated });
-      if (setDoc.columnId !== undefined || setDoc.order !== undefined) {
-        getIO().to(`project:${current.projectId}`).emit("task:reordered", {
-          taskId: updated._id,
-          columnId: updated.columnId,
-          order: updated.order,
-        });
-      }
-
-      return res.status(200).json({ error: false, message: "Task updated.", task: updated });
-    } catch (e) {
-      if (e && e.code === 11000) {
-        const retryOrder = await AppendOrder();
-        const updated = await Task.findOneAndUpdate(
-          { _id: taskId },
-          { $set: { ...setDoc, order: retryOrder } },
-          { new: true }
-        );
-        return res.status(200).json({ error: false, message: "Task updated.", task: updated });
-      }
-      throw e;
+    const updated = await Task.findByIdAndUpdate(
+      taskId,
+      { $set: setDoc },
+      { new: true }
+    );
+    getIO().to(`project:${current.projectId}`).emit("task:updated", { task: updated });
+    if (order !== undefined) {
+      getIO().to(`project:${current.projectId}`).emit("task:reordered", {
+        taskId: updated._id,
+        columnId: updated.columnId,
+        order: updated.order,
+      });
     }
+    return res.status(200).json({ error: false, message: "Task updated.", task: updated });
   } catch (err) {
     return res.status(500).json({ error: true, message: `Unable to update task: ${err.message}` });
   }

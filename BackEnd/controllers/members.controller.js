@@ -21,27 +21,49 @@ const listMembers = async (req, res) => {
 const addMember = async (req, res) => {
   try {
     const { id } = req.params;
-    const { userId, role = "member" } = req.body || {};
-    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ error: true, message: "Invalid ids." });
+    const { name, role = "member" } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ error: true, message: "Invalid project id." });
+    }
+    if (!name || typeof name !== "string" || name.trim().length < 1) {
+      return res.status(400).json({ error: true, message: "Valid user name is required." });
     }
     const ownerOk = await ensureOwner(id, req.user.userId);
-    if (!ownerOk) return res.status(403).json({ error: true, message: "Only owner can add members." });
+    if (!ownerOk) {
+      return res.status(403).json({ error: true, message: "Only owner can add members." });
+    }
+    const user = await User.findOne({
+      name: { $regex: `^${name.trim()}$`, $options: "i" },
+    }).lean();
 
-    const user = await User.findById(userId).lean();
-    if (!user) return res.status(404).json({ error: true, message: "User not found." });
-
+    if (!user) {
+      return res.status(404).json({ error: true, message: "User not found." });
+    }
+    const userId = user._id;
     const updated = await Project.findOneAndUpdate(
       { _id: id, "members.userId": { $ne: userId } },
       { $push: { members: { userId, role: role === "owner" ? "member" : role } } },
       { new: true }
     ).populate("members.userId", "name");
 
-    return res.status(200).json({ error: false, message: "Member added.", members: updated.members });
+    if (!updated) {
+      const exists = await Project.exists({ _id: id });
+      if (!exists) {
+        return res.status(404).json({ error: true, message: "Project not found." });
+      }
+      return res.status(409).json({ error: true, message: "User is already a member." });
+    }
+
+    return res
+      .status(200)
+      .json({ error: false, message: "Member added.", members: updated.members });
   } catch (e) {
-    return res.status(500).json({ error: true, message: `Unable to add member: ${e.message}` });
+    return res
+      .status(500)
+      .json({ error: true, message: `Unable to add member: ${e.message}` });
   }
 };
+
 
 const updateMemberRole = async (req, res) => {
   try {
@@ -77,6 +99,7 @@ const updateMemberRole = async (req, res) => {
 const removeMember = async (req, res) => {
   try {
     const { id, userId } = req.params;
+    console.log(req.user.userId,"req.USERIDD_______")
     const ownerOk = await ensureOwner(id, req.user.userId);
     if (!ownerOk) return res.status(403).json({ error: true, message: "Only owner can remove members." });
     const proj = await Project.findById(id);

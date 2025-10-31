@@ -7,6 +7,11 @@ const { getIO } = require("../socketjs/ioUniv");
 const createProject = async (req, res) => {
   try {
     const { name, description } = req.body;
+    const ownerId = req.user?.userId;
+    console.log(name, description,ownerId )
+    if (!ownerId) {
+      return res.status(401).json({ error: true, message: "Unauthorized" });
+    }
     if (!name || name.trim().length < 3) {
       return res
         .status(400)
@@ -20,17 +25,12 @@ const createProject = async (req, res) => {
           message: "Description must be at least 3 characters.",
         });
     }
-    const ownerId = req.user?.userId;
-    if (!ownerId) {
-      return res.status(401).json({ error: true, message: "Unauthorized" });
-    }
     const project = await projectModel.create({
       name: name.trim(),
       description: description.trim(),
       ownerId,
       members: [{ userId: ownerId, role: "owner" }],
     });
-
     await Column.insertMany([
       { projectId: project._id, key: "todo", name: "To Do", order: 1000 },
       {
@@ -41,7 +41,6 @@ const createProject = async (req, res) => {
       },
       { projectId: project._id, key: "done", name: "Done", order: 3000 },
     ]);
-
     getIO().emit("project:created", { project });
     return res
       .status(201)
@@ -85,8 +84,6 @@ const getProject = async (req, res) => {
       });
       return res.status(200).json({ error: false, projects });
     }
-    // const projects = await projectModel.find().sort({ createdAt: -1 });
-    // return res.status(200).json({ error: false, message:projects });
     const userId = req.user?.userId;
     if (!userId) {
       return res.status(401).json({ error: true, message: "Unauthorized" });
