@@ -1,7 +1,6 @@
 import { io, Socket } from "socket.io-client";
-import { BASE_URL } from "../Service/Api";
 
-const SOCKET_URL = BASE_URL
+const SOCKET_URL = 'http://localhost:5001/'
 
 export function connectSocket(token: string): Socket {
   return io(SOCKET_URL, {

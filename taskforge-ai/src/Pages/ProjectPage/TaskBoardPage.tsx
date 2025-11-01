@@ -1,17 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  Plus,
-  Search,
-  Filter,
-  MoreVertical,
-} from "lucide-react";
+import { Plus, Search, Filter, MoreVertical } from "lucide-react";
 import type { Priority, StatusKey, Task } from "../Types/Types";
 import { UI } from "../../Utils/colors";
 import { useParams } from "react-router-dom";
 import { getColumnById } from "../../Service/Api_Calls/projectApi";
-import { createTask, getTasksByProjectId } from "../../Service/Api_Calls/taskApi";
+import { createTask, getTasksByProjectId, updateTask } from "../../Service/Api_Calls/taskApi";
 import TaskCard from "../../Components/TaskComponents/TaskCard";
 import CreateTaskModal from "../../Components/TaskComponents/CreateTaskModal";
+import { useSocket } from "../../Utils/hooks/useSocket";
+import { toast } from "sonner";
 
 const statusMeta: Record<StatusKey, { label: string; dot: string }> = {
   todo: { label: "To Do", dot: UI.blue },
@@ -28,68 +25,125 @@ const TasksBoardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const { projectId } = useParams();
-  // state
-const [createOpen, setCreateOpen] = useState(false);
-const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
+  const { socket, connected } = useSocket();
 
-  console.log(error,"error")
-const handleTaskDeleted = (deletedId: string) => {
-  setTasks((prev) => prev.filter((t) => t.id !== deletedId));
-};
+  const handleTaskDeleted = (deletedId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== deletedId));
+  };
 
-const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
-  apiTasks.map((t: any) => ({
-    id: t._id,
-    title: t.title,
-    description: t.description || "",
-    due: t.updatedAt,
-    priority: t.difficulty === "hard" ? "high" : t.difficulty === "medium" ? "medium" : "low",
-    points: t.order || 0,
-    status:
-      t.columnId === colIds[0]
-        ? "todo"
-        : t.columnId === colIds[1]
-        ? "in_progress"
-        : "done",
-  }));
+  useEffect(() => {
+    if (!socket) return;
+    socket.on("task:moved", ({ taskId, fromColumnId, toColumnId }) => {
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                status:
+                  toColumnId === columnIds[0]
+                    ? "todo"
+                    : toColumnId === columnIds[1]
+                    ? "in_progress"
+                    : "done",
+              }
+            : t
+        )
+      );
+    });
+    return () => {
+      socket.off("task:moved");
+    };
+  }, [socket, columnIds]);
+
+  async function handleTaskMove(taskId: string,
+     fromColumnId: string,
+     toColumnId: string) 
+  {
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId
+          ? {
+              ...t,
+              status:
+                toColumnId === columnIds[0]
+                  ? "todo"
+                  : toColumnId === columnIds[1]
+                  ? "in_progress"
+                  : "done",
+            }
+          : t
+      )
+    );
+    try {
+      const res = await updateTask(taskId,{columnId: toColumnId });
+      if (res.error) throw new Error(res.message);
+      socket?.emit("task:moved", {
+        taskId,
+        fromColumnId,
+        toColumnId,
+        projectId,
+      });
+      toast.success("Task moved successfully");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to move task");
+    }
+  }
+
+  const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
+    apiTasks.map((t: any) => ({
+      id: t._id,
+      title: t.title,
+      description: t.description || "",
+      due: t.updatedAt,
+      priority: t.difficulty === "hard" ? "high" : t.difficulty === "medium" ? "medium" : "low",
+      points: t.order || 0,
+      status:
+        t.columnId === colIds[0]
+          ? "todo"
+          : t.columnId === colIds[1]
+          ? "in_progress"
+          : "done",
+    }));
 
   const filtered = useMemo(() => {
-  const s = q.trim().toLowerCase();
-  return tasks.filter((t) => {
-    const matchesQ =
-      !s ||
-      t.title.toLowerCase().includes(s) ||
-      (t.description || "").toLowerCase().includes(s) ||
-      (t.tags || []).some((tag) => tag.toLowerCase().includes(s));
-    const matchesP = priority === "all" || t.priority === priority;
-    return matchesQ && matchesP;
-  });
+    const s = q.trim().toLowerCase();
+    return tasks.filter((t) => {
+      const matchesQ =
+        !s ||
+        t.title.toLowerCase().includes(s) ||
+        (t.description || "").toLowerCase().includes(s) ||
+        (t.tags || []).some((tag) => tag.toLowerCase().includes(s));
+      const matchesP = priority === "all" || t.priority === priority;
+      return matchesQ && matchesP;
+    });
   }, [q, priority, tasks]);
 
   useEffect(() => {
-  const fetchTasks = async () => {
-    if (!projectId) return;
-    const res = await getTasksByProjectId(String(projectId));
-    if (!res.error && res.tasks) {
-      const formattedTasks = res.tasks.map((t: any) => ({
-        id: t._id,
-        title: t.title,
-        description: t.description || "",
-        due: t.updatedAt,
-        priority: t.difficulty === "hard" ? "high" : t.difficulty === "medium" ? "medium" : "low",
-        points: t.order || 0,
-        status:
-          t.columnId === columnIds[0]
-            ? "todo"
-            : t.columnId === columnIds[1]
-            ? "in_progress"
-            : "done",
-      }));
-      setTasks(formattedTasks);
-    }
-  };
-  fetchTasks();
-}, [projectId, columnIds]);
+    const fetchTasks = async () => {
+      if (!projectId) return;
+      const res = await getTasksByProjectId(String(projectId));
+      if (!res.error && res.tasks) {
+        const formattedTasks = res.tasks.map((t: any) => ({
+          id: t._id,
+          title: t.title,
+          description: t.description || "",
+          due: t.updatedAt,
+          priority: t.difficulty === "hard" ? "high" : t.difficulty === "medium" ? "medium" : "low",
+          points: t.order || 0,
+          status:
+            t.columnId === columnIds[0]
+              ? "todo"
+              : t.columnId === columnIds[1]
+              ? "in_progress"
+              : "done",
+        }));
+        setTasks(formattedTasks);
+      }
+    };
+    fetchTasks();
+  }, [projectId, columnIds]);
 
   useEffect(() => {
     const fetchColumns = async () => {
@@ -97,16 +151,14 @@ const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
       setError(null);
       try {
         const res = await getColumnById(String(projectId));
-        console.log(res,"respinseee")
         if (!res.error && res.columns) {
           const cols = res.columns.map((c: any) => ({
             id: c._id,
             name: c.name,
             key: c.key,
           }));
-          console.log(cols,"colsss___________")
           setColumns(cols);
-          setColumnIds(cols.map((c:any) => c.id));
+          setColumnIds(cols.map((c: any) => c.id));
         } else {
           setError(res.message || "Failed to fetch columns");
         }
@@ -118,7 +170,7 @@ const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
     };
     if (projectId) fetchColumns();
   }, [projectId]);
-  
+
   const grouped = useMemo(() => {
     const g: Record<StatusKey, Task[]> = { todo: [], in_progress: [], done: [] };
     for (const t of filtered) g[t.status].push(t);
@@ -197,10 +249,10 @@ const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
               border: "1px solid rgba(255,255,255,0.06)",
               backdropFilter: "blur(6px)",
             }}
-           onClick={() => {
-            setActiveColumnId(columnIds[0] || null);
-            setCreateOpen(true);
-          }}
+            onClick={() => {
+              setActiveColumnId(columnIds[0] || null);
+              setCreateOpen(true);
+            }}
             title="Create Task"
           >
             <Plus className="h-5 w-5 text-[#00d4a4]" />
@@ -219,7 +271,8 @@ const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
               title={col.name}
               color={statusMeta[col.key as StatusKey]?.dot || UI.blue}
               tasks={grouped[col.key as StatusKey] || []}
-              onDeleteTask={handleTaskDeleted} 
+              onDeleteTask={handleTaskDeleted}
+              onTaskMove={handleTaskMove}
             />
           ))
         )}
@@ -238,7 +291,6 @@ const mapApiTasks = (apiTasks: any[], colIds: string[]): Task[] =>
         }}
         createTask={createTask}
       />
-
     </div>
   );
 };
@@ -248,20 +300,33 @@ function Column({
   title,
   color,
   tasks,
-  onDeleteTask
+  onDeleteTask,
+  onTaskMove,
 }: {
-  id:string,
+  id: string;
   title: string;
   color: string;
   tasks: Task[];
   onDeleteTask?: (taskId: string) => void;
+  onTaskMove?: (taskId: string, fromColumnId: string, toColumnId: string) => void;
 }) {
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData("taskId");
+    const fromColumnId = e.dataTransfer.getData("fromColumnId");
+    if (!taskId || !id) return;
+    onTaskMove?.(taskId, fromColumnId, id);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+  }
+
   return (
     <div
       className="flex min-h-0 flex-col rounded-2xl border p-4"
-      onClick={()=>{
-        console.log( id)
-      }}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
       style={{
         background: UI.bgCard,
         borderColor: UI.border,
@@ -285,13 +350,13 @@ function Column({
         </button>
       </div>
       <div className="scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent flex-1 space-y-4 overflow-auto pr-1">
-      <div className="scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent flex-1 space-y-4 overflow-auto pr-1">
         {tasks.length === 0 ? (
           <EmptyState />
         ) : (
-          tasks.map((t) => <TaskCard key={t.id} task={t} columnId={id}  onDelete={onDeleteTask} />)
+          tasks.map((t) => (
+            <TaskCard key={t.id} task={t} columnId={id} onDelete={onDeleteTask} />
+          ))
         )}
-      </div>
       </div>
     </div>
   );
@@ -311,5 +376,5 @@ function EmptyState() {
     </div>
   );
 }
-export default TasksBoardPage;
 
+export default TasksBoardPage;

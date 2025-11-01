@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const auth = async (req, res, next) => {
     const token = req.headers.authorization;
-    console.log(token," req.headers.authorization",process.env.SECRET_KEY)
+    // console.log(token," req.headers.authorization",process.env.SECRET_KEY)
     try {
         if (token) {
             const tokenToVerify = token.startsWith("Bearer") ? token.split(" ")[1] : token;

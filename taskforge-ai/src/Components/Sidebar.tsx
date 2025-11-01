@@ -1,6 +1,6 @@
 // src/Components/Sidebar.tsx
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   FolderKanban,
   Plus,
@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { createProject, getAllProject, updateProject, deleteProject } from "../Service/Api_Calls/projectApi";
 import type { Project as ProjectFromApi } from "../Service/Api_Calls/projectApi";
 import type { Project as ProjectFromPages } from "../Pages/Types/Types";
+import { useSocket } from "../Utils/hooks/useSocket";
 
 function debounce<T extends (...args: any[]) => void>(fn: T, wait = 300) {
   let t: ReturnType<typeof setTimeout> | null = null;
@@ -42,41 +43,60 @@ function normalizeProject(p: ProjectFromPages | ProjectFromApi): ProjectFromApi 
     updatedAt: (p as any).updatedAt,
   };
 }
-function normalizeList(
-  list: Array<ProjectFromPages | ProjectFromApi> | undefined | null
-): ProjectFromApi[] {
-  if (!list || !Array.isArray(list)) return [];
-  return list.map(normalizeProject);
-}
+  function normalizeList(
+    list: Array<ProjectFromPages | ProjectFromApi> | undefined | null
+  ): ProjectFromApi[] {
+      if (!list || !Array.isArray(list)) return [];
+      return list.map(normalizeProject);
+  }
 
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectFromApi[]>([]);
   const [displayed, setDisplayed] = useState<ProjectFromApi[]>([]);
-
   const [loading, setLoading] = useState<boolean>(true);
   const [creating, setCreating] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-
   const [openCreate, setOpenCreate] = useState<boolean>(false);
-
   const [q, setQ] = useState<string>("");
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const dialogRef = useRef<HTMLDivElement | null>(null);
-
   const [openEdit, setOpenEdit] = useState<boolean>(false);
   const [editing, setEditing] = useState<boolean>(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [editName, setEditName] = useState<string>("");
   const [editDescription, setEditDescription] = useState<string>("");
-
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<boolean>(false);
-
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const { socket, connected } = useSocket();
+  const { projectId: routeProjectId } = useParams();
+  const joinedProjectRef = useRef<string | null>(null);
+  console.log(routeProjectId,"FROM THE PROJECT IDD SIDEBARR____")
 
+  useEffect(() => {
+    if (!socket || !connected) return;
+    const next = routeProjectId || null;
+    const prev = joinedProjectRef.current;
+    if (prev && prev !== next) {
+      socket.emit("leaveProject", { projectId: prev });
+    }
+    if (next && next !== prev) {
+      socket.emit("joinProject", { projectId: next });
+    }
+    joinedProjectRef.current = next;
+  }, [socket, connected, routeProjectId]);
+
+  useEffect(() => {
+    return () => {
+      if (socket && joinedProjectRef.current) {
+        socket.emit("leaveProject", { projectId: joinedProjectRef.current });
+        joinedProjectRef.current = null;
+      }
+    };
+  }, [socket]);
   async function loadAll() {
     setLoading(true);
     setError(null);

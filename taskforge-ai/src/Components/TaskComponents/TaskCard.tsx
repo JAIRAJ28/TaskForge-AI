@@ -69,6 +69,48 @@ const saveEdit = (e: LocalEdit) => {
   localStorage.setItem(EDITS_KEY, JSON.stringify(all));
 };
 
+function Avatar({ initials, borderColor }: { initials: string; borderColor: string }) {
+  return (
+    <div
+      className="grid h-7 w-7 place-items-center rounded-full border text-[11px] font-semibold"
+      style={{
+        borderColor,
+        background:
+          "linear-gradient(145deg, rgba(99,143,255,0.22), rgba(18,182,127,0.22))",
+        color: "#FFFFFF",
+        boxShadow: "0 0 8px rgba(99,143,255,0.18)",
+      }}
+      title={initials}
+    >
+      <User className="mr-[2px] hidden h-3.5 w-3.5 opacity-80" />
+      {initials}
+    </div>
+  );
+}
+
+function MoreCount({ n, borderColor }: { n: number; borderColor: string }) {
+  return (
+    <div
+      className="grid h-7 w-7 place-items-center rounded-full border text-[10px] font-semibold text-white/85"
+      style={{ borderColor, background: "rgba(255,255,255,0.06)" }}
+      title={`+${n}`}
+    >
+      +{n}
+    </div>
+  );
+}
+
+function formatDue(due: string) {
+  try {
+    const d = new Date(due);
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "2-digit" };
+    return d.toLocaleDateString(undefined, opts);
+  } catch {
+    return due;
+  }
+}
+
+
 export const TaskCard: React.FC<TaskCardProps> = ({
   task,
   taskId,
@@ -99,10 +141,8 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [removed, setRemoved] = useState(false);
-
   const defaultDifficulty: "easy" | "medium" | "hard" =
     display.priority === "high" ? "hard" : display.priority === "medium" ? "medium" : "easy";
-
   const [title, setTitle] = useState(display.title);
   const [description, setDescription] = useState(display.description || "");
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">(defaultDifficulty);
@@ -156,6 +196,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({
       title: title.trim(),
       description: description.trim() || undefined,
       difficulty,
+      columnId:columnId,
       order,
     });
     setSaving(false);
@@ -195,6 +236,11 @@ export const TaskCard: React.FC<TaskCardProps> = ({
 
   return (
     <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData("taskId", id);
+        e.dataTransfer.setData("fromColumnId", columnId || "");
+      }}
       onClick={() => {
         if (!updateOpen) onClick?.();
       }}
@@ -424,45 +470,5 @@ export const TaskCard: React.FC<TaskCardProps> = ({
   );
 };
 
-function Avatar({ initials, borderColor }: { initials: string; borderColor: string }) {
-  return (
-    <div
-      className="grid h-7 w-7 place-items-center rounded-full border text-[11px] font-semibold"
-      style={{
-        borderColor,
-        background:
-          "linear-gradient(145deg, rgba(99,143,255,0.22), rgba(18,182,127,0.22))",
-        color: "#FFFFFF",
-        boxShadow: "0 0 8px rgba(99,143,255,0.18)",
-      }}
-      title={initials}
-    >
-      <User className="mr-[2px] hidden h-3.5 w-3.5 opacity-80" />
-      {initials}
-    </div>
-  );
-}
-
-function MoreCount({ n, borderColor }: { n: number; borderColor: string }) {
-  return (
-    <div
-      className="grid h-7 w-7 place-items-center rounded-full border text-[10px] font-semibold text-white/85"
-      style={{ borderColor, background: "rgba(255,255,255,0.06)" }}
-      title={`+${n}`}
-    >
-      +{n}
-    </div>
-  );
-}
-
-function formatDue(due: string) {
-  try {
-    const d = new Date(due);
-    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "2-digit" };
-    return d.toLocaleDateString(undefined, opts);
-  } catch {
-    return due;
-  }
-}
 
 export default TaskCard;

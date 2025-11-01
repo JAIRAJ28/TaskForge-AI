@@ -65,6 +65,7 @@ const addMember = async (req, res) => {
 };
 
 
+
 const updateMemberRole = async (req, res) => {
   try {
     const { id, userId } = req.params;
@@ -95,6 +96,8 @@ const updateMemberRole = async (req, res) => {
     return res.status(500).json({ error: true, message: `Unable to update role: ${e.message}` });
   }
 };
+
+
 
 const removeMember = async (req, res) => {
   try {

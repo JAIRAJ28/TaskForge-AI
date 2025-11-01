@@ -105,6 +105,7 @@ export async function updateTask(
   payload: {
     title?: string;
     description?: string;
+    columnId?:string;
     difficulty?: "easy" | "medium" | "hard";
     order?: number;
   }

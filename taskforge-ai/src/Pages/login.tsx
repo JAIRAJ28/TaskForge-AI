@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { Link, useNavigate, Navigate } from "react-router-dom";
 import { LoginPerson } from "../Service/Api_Calls/AuthService"; 
 import { toast } from "sonner";
+import { useSocket } from "../Utils/hooks/useSocket";
 function stripBearer(token: string) {
   return token.startsWith("Bearer ") ? token.slice(7) : token;
 }
@@ -26,7 +27,7 @@ const LoginCardUI: React.FC = () => {
   if (decoded && typeof decoded.exp === "number" && decoded.exp > now) {
     return <Navigate to="/dashboard" replace />;
   }
-
+  const {initSocket}=useSocket()
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false); 
@@ -66,6 +67,7 @@ const LoginCardUI: React.FC = () => {
         toast.success("Logged in successfully 🎉", {
           description: `Welcome back, ${res?.user?.name || name.trim()}`,
         });
+        initSocket(res?.token);
         localStorage.setItem("Token", `Bearer ${res?.token}`);
         navigate("/dashboard");
       }
